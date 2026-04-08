@@ -121,12 +121,23 @@ object CarrierConfigManager {
     }
 
     private fun overrideCarrierConfig(subId: Int, bundle: PersistableBundle?) {
+        val loader = getCarrierConfigLoader()
         try {
-            getCarrierConfigLoader().overrideConfig(subId, bundle, true)
+            loader.overrideConfig(subId, bundle, true)
+            return
         } catch (e: Throwable) {
             val message = e.message.orEmpty()
             if (message.contains(ANDROID_16_SHELL_ERROR, ignoreCase = true)) {
-                throw IllegalStateException("当前系统已限制此接口（Android 16/新安全补丁），暂时无法直接保存")
+                try {
+                    loader.overrideConfig(subId, bundle, false)
+                    return
+                } catch (fallbackError: Throwable) {
+                    val fallbackMessage = fallbackError.message.orEmpty()
+                    if (fallbackMessage.contains(ANDROID_16_SHELL_ERROR, ignoreCase = true)) {
+                        throw IllegalStateException("当前系统已限制持久化写入；已尝试临时写入但仍失败（Android 16/新安全补丁）")
+                    }
+                    throw fallbackError
+                }
             }
             throw e
         }

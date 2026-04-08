@@ -12,8 +12,8 @@ android {
         applicationId = "com.cloudclawebot.nrfr"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7 //版本更新 +1
-        versionName = "1.0.7" //同步更新版本号 rfr-client/app.go
+        versionCode = 8 //版本更新 +1
+        versionName = "1.0.8" //同步更新版本号 rfr-client/app.go
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
