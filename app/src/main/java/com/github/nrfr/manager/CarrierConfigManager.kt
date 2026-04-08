@@ -5,13 +5,15 @@ import android.os.Build
 import android.os.PersistableBundle
 import android.telephony.CarrierConfigManager
 import android.telephony.SubscriptionManager
-import android.telephony.TelephonyFrameworkInitializer
 import android.telephony.TelephonyManager
 import com.android.internal.telephony.ICarrierConfigLoader
 import com.github.nrfr.model.SimCardInfo
 import rikka.shizuku.ShizukuBinderWrapper
 
 object CarrierConfigManager {
+    private const val PACKAGE_NAME = "com.github.nrfr"
+    private const val ANDROID_16_SHELL_ERROR = "overrideConfig cannot be invoked by shell"
+
     fun getSimCards(context: Context): List<SimCardInfo> {
         val simCards = mutableListOf<SimCardInfo>()
         val subId1 = SubscriptionManager.getSubId(0)
@@ -30,34 +32,23 @@ object CarrierConfigManager {
     }
 
     private fun getCurrentConfig(subId: Int): Map<String, String> {
-        try {
-            val carrierConfigLoader = ICarrierConfigLoader.Stub.asInterface(
-                ShizukuBinderWrapper(
-                    TelephonyFrameworkInitializer
-                        .getTelephonyServiceManager()
-                        .carrierConfigServiceRegisterer
-                        .get()
-                )
-            )
-            val config = carrierConfigLoader.getConfigForSubId(subId, "com.github.nrfr") ?: return emptyMap()
-
+        return try {
+            val config = getCarrierConfigLoader().getConfigForSubId(subId, PACKAGE_NAME) ?: return emptyMap()
             val result = mutableMapOf<String, String>()
 
-            // 获取国家码配置
             config.getString(CarrierConfigManager.KEY_SIM_COUNTRY_ISO_OVERRIDE_STRING)?.let {
                 result["国家码"] = it
             }
 
-            // 获取运营商名称配置
             if (config.getBoolean(CarrierConfigManager.KEY_CARRIER_NAME_OVERRIDE_BOOL, false)) {
                 config.getString(CarrierConfigManager.KEY_CARRIER_NAME_STRING)?.let {
                     result["运营商名称"] = it
                 }
             }
 
-            return result
-        } catch (e: Exception) {
-            return emptyMap()
+            result
+        } catch (_: Throwable) {
+            emptyMap()
         }
     }
 
@@ -66,20 +57,13 @@ object CarrierConfigManager {
             ?: return ""
 
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Android 10 及以上使用新 API
-                telephonyManager.getNetworkOperatorName(subId)
-            } else {
-                // Android 8-9 使用反射获取运营商名称
-                val createForSubscriptionId = TelephonyManager::class.java.getMethod(
-                    "createForSubscriptionId",
-                    Int::class.javaPrimitiveType
-                )
-                val subTelephonyManager = createForSubscriptionId.invoke(telephonyManager, subId) as TelephonyManager
-                subTelephonyManager.networkOperatorName
-            }
-        } catch (e: Exception) {
-            // 如果获取失败，回退到默认的 TelephonyManager
+            val createForSubscriptionId = TelephonyManager::class.java.getMethod(
+                "createForSubscriptionId",
+                Int::class.javaPrimitiveType
+            )
+            val subTelephonyManager = createForSubscriptionId.invoke(telephonyManager, subId) as TelephonyManager
+            subTelephonyManager.networkOperatorName
+        } catch (_: Throwable) {
             telephonyManager.networkOperatorName
         }
     }
@@ -87,7 +71,6 @@ object CarrierConfigManager {
     fun setCarrierConfig(subId: Int, countryCode: String?, carrierName: String? = null) {
         val bundle = PersistableBundle()
 
-        // 设置国家码
         if (!countryCode.isNullOrEmpty() && countryCode.length == 2) {
             bundle.putString(
                 CarrierConfigManager.KEY_SIM_COUNTRY_ISO_OVERRIDE_STRING,
@@ -95,7 +78,6 @@ object CarrierConfigManager {
             )
         }
 
-        // 设置运营商名称
         if (!carrierName.isNullOrEmpty()) {
             bundle.putBoolean(CarrierConfigManager.KEY_CARRIER_NAME_OVERRIDE_BOOL, true)
             bundle.putString(CarrierConfigManager.KEY_CARRIER_NAME_STRING, carrierName)
@@ -109,14 +91,26 @@ object CarrierConfigManager {
     }
 
     private fun overrideCarrierConfig(subId: Int, bundle: PersistableBundle?) {
-        val carrierConfigLoader = ICarrierConfigLoader.Stub.asInterface(
-            ShizukuBinderWrapper(
-                TelephonyFrameworkInitializer
-                    .getTelephonyServiceManager()
-                    .carrierConfigServiceRegisterer
-                    .get()
-            )
-        )
-        carrierConfigLoader.overrideConfig(subId, bundle, true)
+        try {
+            getCarrierConfigLoader().overrideConfig(subId, bundle, true)
+        } catch (e: Throwable) {
+            val message = e.message.orEmpty()
+            if (message.contains(ANDROID_16_SHELL_ERROR, ignoreCase = true)) {
+                throw IllegalStateException("当前系统已限制此接口（Android 16/新安全补丁），暂时无法直接保存")
+            }
+            throw e
+        }
+    }
+
+    private fun getCarrierConfigLoader(): ICarrierConfigLoader {
+        val telephonyFrameworkInitializer = Class.forName("android.telephony.TelephonyFrameworkInitializer")
+        val getTelephonyServiceManager = telephonyFrameworkInitializer.getDeclaredMethod("getTelephonyServiceManager")
+        val telephonyServiceManager = getTelephonyServiceManager.invoke(null)
+        val getRegisterer = telephonyServiceManager.javaClass.getDeclaredMethod("getCarrierConfigServiceRegisterer")
+        val registerer = getRegisterer.invoke(telephonyServiceManager)
+        val getService = registerer.javaClass.getDeclaredMethod("get")
+        val binder = getService.invoke(registerer) as android.os.IBinder
+
+        return ICarrierConfigLoader.Stub.asInterface(ShizukuBinderWrapper(binder))
     }
 }
