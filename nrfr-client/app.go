@@ -141,12 +141,16 @@ func (a *App) GetDevices() []DeviceInfo {
 	var deviceInfos []DeviceInfo
 	for _, device := range devices {
 		state, _ := device.State()
+		stateText := string(state)
+		if stateText != "device" {
+			continue
+		}
 		product, _ := device.Product()
 		model, _ := device.Model()
 
 		info := DeviceInfo{
 			Serial:  device.Serial(),
-			State:   string(state),
+			State:   stateText,
 			Product: product,
 			Model:   model,
 		}
@@ -223,7 +227,6 @@ func (a *App) InstallShizuku() error {
 		return fmt.Errorf("未选择设备")
 	}
 
-	// 从本地资源目录推送 APK 到设备
 	execPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("获取执行路径失败: %v", err)
@@ -232,12 +235,10 @@ func (a *App) InstallShizuku() error {
 	localApk := filepath.Join(execDir, "resources", "shizuku.apk")
 	remoteApk := "/data/local/tmp/shizuku.apk"
 
-	// 检查文件是否存在
 	if _, err := os.Stat(localApk); os.IsNotExist(err) {
 		return fmt.Errorf("shizuku apk 文件不存在: %s", localApk)
 	}
 
-	// 推送 APK 文件
 	file, err := os.Open(localApk)
 	if err != nil {
 		return fmt.Errorf("打开 Shizuku APK 文件失败: %v", err)
@@ -249,13 +250,14 @@ func (a *App) InstallShizuku() error {
 		return fmt.Errorf("推送 Shizuku APK 文件失败: %v", err)
 	}
 
-	// 安装 APK
-	_, err = a.selectedDevice.RunShellCommand("pm", "install", "-r", remoteApk)
+	output, err := a.selectedDevice.RunShellCommand("sh", "-c", fmt.Sprintf("pm install -r '%s'", remoteApk))
 	if err != nil {
 		return fmt.Errorf("安装 Shizuku 失败: %v", err)
 	}
+	if !strings.Contains(output, "Success") {
+		return fmt.Errorf("安装 Shizuku 失败: %s", strings.TrimSpace(output))
+	}
 
-	// 清理临时文件
 	_, err = a.selectedDevice.RunShellCommand("rm", remoteApk)
 	if err != nil {
 		wailsruntime.LogWarning(a.ctx, fmt.Sprintf("清理临时文件失败: %v", err))
@@ -270,7 +272,6 @@ func (a *App) InstallNrfr() error {
 		return fmt.Errorf("未选择设备")
 	}
 
-	// 从本地资源目录推送 APK 到设备
 	execPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("获取执行路径失败: %v", err)
@@ -279,12 +280,10 @@ func (a *App) InstallNrfr() error {
 	localApk := filepath.Join(execDir, "resources", "nrfr.apk")
 	remoteApk := "/data/local/tmp/nrfr.apk"
 
-	// 检查文件是否存在
 	if _, err := os.Stat(localApk); os.IsNotExist(err) {
 		return fmt.Errorf("nrfr apk 文件不存在: %s", localApk)
 	}
 
-	// 推送 APK 文件
 	file, err := os.Open(localApk)
 	if err != nil {
 		return fmt.Errorf("打开 Nrfr APK 文件失败: %v", err)
@@ -296,13 +295,14 @@ func (a *App) InstallNrfr() error {
 		return fmt.Errorf("推送 Nrfr APK 文件失败: %v", err)
 	}
 
-	// 安装 APK
-	_, err = a.selectedDevice.RunShellCommand("pm", "install", "-r", remoteApk)
+	output, err := a.selectedDevice.RunShellCommand("sh", "-c", fmt.Sprintf("pm install -r '%s'", remoteApk))
 	if err != nil {
 		return fmt.Errorf("安装 Nrfr 失败: %v", err)
 	}
+	if !strings.Contains(output, "Success") {
+		return fmt.Errorf("安装 Nrfr 失败: %s", strings.TrimSpace(output))
+	}
 
-	// 清理临时文件
 	_, err = a.selectedDevice.RunShellCommand("rm", remoteApk)
 	if err != nil {
 		wailsruntime.LogWarning(a.ctx, fmt.Sprintf("清理临时文件失败: %v", err))
@@ -382,17 +382,21 @@ func (a *App) GetAppVersion(packageName string) (string, error) {
 		return "", fmt.Errorf("未选择设备")
 	}
 
-	output, err := a.selectedDevice.RunShellCommand("dumpsys", "package", packageName, "|", "grep", "versionName")
+	output, err := a.selectedDevice.RunShellCommand("sh", "-c", fmt.Sprintf("dumpsys package %s | grep versionName", packageName))
 	if err != nil {
 		return "", fmt.Errorf("获取版本号失败: %v", err)
 	}
 
-	// 解析版本号
-	parts := strings.Split(strings.TrimSpace(output), "=")
-	if len(parts) != 2 {
-		return "", fmt.Errorf("解析版本号失败")
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.Contains(line, "versionName=") {
+			parts := strings.SplitN(line, "versionName=", 2)
+			if len(parts) == 2 && strings.TrimSpace(parts[1]) != "" {
+				return strings.TrimSpace(parts[1]), nil
+			}
+		}
 	}
-	return strings.TrimSpace(parts[1]), nil
+	return "", fmt.Errorf("解析版本号失败")
 }
 
 // compareVersions 比较两个版本号，如果 v1 < v2 返回 -1，v1 = v2 返回 0，v1 > v2 返回 1
@@ -452,7 +456,7 @@ func (a *App) CheckNrfrUpdate() (bool, error) {
 	}
 
 	// 最新版本号（从build.gradle.kts中获取）
-	latestVersion := "1.0.4" // 这里硬编码为当前最新版本
+	latestVersion := "1.0.5" // 这里硬编码为当前最新版本
 
 	// 比较版本号
 	return compareVersions(currentVersion, latestVersion) < 0, nil

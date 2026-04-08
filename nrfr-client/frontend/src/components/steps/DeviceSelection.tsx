@@ -79,7 +79,7 @@ export const DeviceSelection: React.FC<Props> = ({devices, onSelect, onRefresh, 
 
     // 自动刷新定时器
     useEffect(() => {
-        const timer = setInterval(onRefresh, 2000);
+        const timer = setInterval(onRefresh, 5000);
         return () => clearInterval(timer);
     }, [onRefresh]);
 

@@ -1,5 +1,6 @@
 package com.github.nrfr
 
+import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Toast
@@ -9,6 +10,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.github.nrfr.ui.screens.AboutScreen
 import com.github.nrfr.ui.screens.MainScreen
 import com.github.nrfr.ui.screens.ShizukuNotReadyScreen
@@ -20,29 +23,29 @@ class MainActivity : ComponentActivity() {
     private var isShizukuReady by mutableStateOf(false)
     private var showAbout by mutableStateOf(false)
 
+    private val shizukuPermissionListener = Shizuku.OnRequestPermissionResultListener { _, grantResult ->
+        isShizukuReady = grantResult == PackageManager.PERMISSION_GRANTED
+        if (!isShizukuReady) {
+            Toast.makeText(this, "需要 Shizuku 权限才能运行", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
+        checkShizukuStatus()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // 初始化 Hidden API 访问
         HiddenApiBypass.addHiddenApiExemptions("L")
         HiddenApiBypass.addHiddenApiExemptions("I")
 
-        // 检查 Shizuku 状态
+        ensurePhoneStatePermission()
         checkShizukuStatus()
 
-        // 添加 Shizuku 权限监听器
-        Shizuku.addRequestPermissionResultListener { _, grantResult ->
-            isShizukuReady = grantResult == PackageManager.PERMISSION_GRANTED
-            if (!isShizukuReady) {
-                Toast.makeText(this, "需要 Shizuku 权限才能运行", Toast.LENGTH_LONG).show()
-            }
-        }
-
-        // 添加 Shizuku 绑定监听器
-        Shizuku.addBinderReceivedListener {
-            checkShizukuStatus()
-        }
+        Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
+        Shizuku.addBinderReceivedListener(binderReceivedListener)
 
         setContent {
             NrfrTheme {
@@ -54,6 +57,12 @@ class MainActivity : ComponentActivity() {
                     ShizukuNotReadyScreen()
                 }
             }
+        }
+    }
+
+    private fun ensurePhoneStatePermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.READ_PHONE_STATE), 1001)
         }
     }
 
@@ -72,7 +81,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        Shizuku.removeRequestPermissionResultListener { _, _ -> }
-        Shizuku.removeBinderReceivedListener { }
+        Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener)
+        Shizuku.removeBinderReceivedListener(binderReceivedListener)
     }
 }

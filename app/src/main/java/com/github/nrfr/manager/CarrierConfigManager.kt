@@ -1,11 +1,15 @@
 package com.github.nrfr.manager
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.PersistableBundle
 import android.telephony.CarrierConfigManager
+import android.telephony.SubscriptionInfo
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
+import androidx.core.content.ContextCompat
 import com.android.internal.telephony.ICarrierConfigLoader
 import com.github.nrfr.model.SimCardInfo
 import rikka.shizuku.ShizukuBinderWrapper
@@ -15,23 +19,41 @@ object CarrierConfigManager {
     private const val ANDROID_16_SHELL_ERROR = "overrideConfig cannot be invoked by shell"
 
     fun getSimCards(context: Context): List<SimCardInfo> {
-        val simCards = mutableListOf<SimCardInfo>()
-        val subId1 = SubscriptionManager.getSubId(0)
-        val subId2 = SubscriptionManager.getSubId(1)
+        val subscriptionManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as? SubscriptionManager
+            ?: return emptyList()
 
-        if (subId1 != null) {
-            val config1 = getCurrentConfig(subId1[0])
-            simCards.add(SimCardInfo(1, subId1[0], getCarrierNameBySubId(context, subId1[0]), config1))
-        }
-        if (subId2 != null) {
-            val config2 = getCurrentConfig(subId2[0])
-            simCards.add(SimCardInfo(2, subId2[0], getCarrierNameBySubId(context, subId2[0]), config2))
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+            return emptyList()
         }
 
-        return simCards
+        val subscriptions = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
+                subscriptionManager.activeSubscriptionInfoList.orEmpty()
+            } else {
+                emptyList()
+            }
+        }.getOrDefault(emptyList())
+
+        return subscriptions
+            .filter { it.subscriptionId != SubscriptionManager.INVALID_SUBSCRIPTION_ID }
+            .sortedBy { it.simSlotIndex }
+            .mapIndexed { index, info ->
+                val subId = info.subscriptionId
+                val slot = if (info.simSlotIndex >= 0) info.simSlotIndex + 1 else index + 1
+                SimCardInfo(
+                    slot = slot,
+                    subId = subId,
+                    carrierName = getCarrierNameBySubInfo(context, info),
+                    currentConfig = getCurrentConfig(subId)
+                )
+            }
     }
 
     private fun getCurrentConfig(subId: Int): Map<String, String> {
+        if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            return emptyMap()
+        }
+
         return try {
             val config = getCarrierConfigLoader().getConfigForSubId(subId, PACKAGE_NAME) ?: return emptyMap()
             val result = mutableMapOf<String, String>()
@@ -52,23 +74,28 @@ object CarrierConfigManager {
         }
     }
 
-    private fun getCarrierNameBySubId(context: Context, subId: Int): String {
+    private fun getCarrierNameBySubInfo(context: Context, info: SubscriptionInfo): String {
         val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-            ?: return ""
+            ?: return info.carrierName?.toString().orEmpty()
 
         return try {
             val createForSubscriptionId = TelephonyManager::class.java.getMethod(
                 "createForSubscriptionId",
                 Int::class.javaPrimitiveType
             )
-            val subTelephonyManager = createForSubscriptionId.invoke(telephonyManager, subId) as TelephonyManager
-            subTelephonyManager.networkOperatorName
+            val subTelephonyManager = createForSubscriptionId.invoke(telephonyManager, info.subscriptionId) as TelephonyManager
+            subTelephonyManager.networkOperatorName.takeUnless { it.isNullOrBlank() }
+                ?: info.carrierName?.toString().orEmpty()
         } catch (_: Throwable) {
-            telephonyManager.networkOperatorName
+            info.carrierName?.toString()?.takeUnless { it.isBlank() } ?: telephonyManager.networkOperatorName
         }
     }
 
     fun setCarrierConfig(subId: Int, countryCode: String?, carrierName: String? = null) {
+        if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            throw IllegalArgumentException("当前设备没有可用的 SIM 卡")
+        }
+
         val bundle = PersistableBundle()
 
         if (!countryCode.isNullOrEmpty() && countryCode.length == 2) {
@@ -87,6 +114,9 @@ object CarrierConfigManager {
     }
 
     fun resetCarrierConfig(subId: Int) {
+        if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+            throw IllegalArgumentException("当前设备没有可用的 SIM 卡")
+        }
         overrideCarrierConfig(subId, null)
     }
 

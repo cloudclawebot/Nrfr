@@ -87,6 +87,7 @@ jobs:
           gradle wrapper
           chmod +x ./gradlew
           ./gradlew assembleDebug
+          find app/build/outputs -type f | sort
         shell: bash
 
       # 设置 Go 环境
@@ -124,8 +125,14 @@ jobs:
       # 复制 Android APK
       - name: Copy Android APK
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk nrfr-client/build/bin/resources/nrfr.apk
-          cp app/build/outputs/apk/debug/app-debug.apk nrfr-${{ steps.version.outputs.version }}.apk
+          APK_PATH=$(find app/build/outputs/apk -type f -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "APK not found"
+            exit 1
+          fi
+          echo "Using APK: $APK_PATH"
+          cp "$APK_PATH" nrfr-client/build/bin/resources/nrfr.apk
+          cp "$APK_PATH" nrfr-${{ steps.version.outputs.version }}.apk
         shell: bash
 
       # 下载 platform-tools
