@@ -9,7 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun ShizukuNotReadyScreen() {
+fun ShizukuNotReadyScreen(hasPhoneStatePermission: Boolean) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -18,13 +18,17 @@ fun ShizukuNotReadyScreen() {
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "需要 Shizuku 权限",
+            text = if (hasPhoneStatePermission) "需要 Shizuku 权限" else "需要电话权限",
             style = MaterialTheme.typography.headlineMedium
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "请安装并启用 Shizuku，然后重启应用",
+            text = if (hasPhoneStatePermission) {
+                "请安装并启用 Shizuku，然后重启应用"
+            } else {
+                "请允许读取电话状态权限，否则无法读取 SIM 卡信息"
+            },
             style = MaterialTheme.typography.bodyLarge
         )
     }
-} 
+}

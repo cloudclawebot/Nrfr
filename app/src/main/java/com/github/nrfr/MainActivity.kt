@@ -21,6 +21,7 @@ import rikka.shizuku.Shizuku
 
 class MainActivity : ComponentActivity() {
     private var isShizukuReady by mutableStateOf(false)
+    private var hasPhoneStatePermission by mutableStateOf(false)
     private var showAbout by mutableStateOf(false)
 
     private val shizukuPermissionListener = Shizuku.OnRequestPermissionResultListener { _, grantResult ->
@@ -41,6 +42,7 @@ class MainActivity : ComponentActivity() {
         HiddenApiBypass.addHiddenApiExemptions("L")
         HiddenApiBypass.addHiddenApiExemptions("I")
 
+        hasPhoneStatePermission = checkPhoneStatePermission()
         ensurePhoneStatePermission()
         checkShizukuStatus()
 
@@ -51,18 +53,32 @@ class MainActivity : ComponentActivity() {
             NrfrTheme {
                 if (showAbout) {
                     AboutScreen(onBack = { showAbout = false })
-                } else if (isShizukuReady) {
+                } else if (isShizukuReady && hasPhoneStatePermission) {
                     MainScreen(onShowAbout = { showAbout = true })
                 } else {
-                    ShizukuNotReadyScreen()
+                    ShizukuNotReadyScreen(hasPhoneStatePermission = hasPhoneStatePermission)
                 }
             }
         }
     }
 
+    private fun checkPhoneStatePermission(): Boolean {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
+    }
+
     private fun ensurePhoneStatePermission() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+        if (!checkPhoneStatePermission()) {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.READ_PHONE_STATE), 1001)
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 1001) {
+            hasPhoneStatePermission = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            if (!hasPhoneStatePermission) {
+                Toast.makeText(this, "需要电话权限才能读取 SIM 卡信息", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
