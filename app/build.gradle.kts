@@ -9,11 +9,11 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.github.nrfr"
+        applicationId = "com.cloudclawebot.nrfr"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5 //版本更新 +1
-        versionName = "1.0.5" //同步更新版本号 rfr-client/app.go
+        versionCode = 6 //版本更新 +1
+        versionName = "1.0.6" //同步更新版本号 rfr-client/app.go
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

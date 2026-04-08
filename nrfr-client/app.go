@@ -194,7 +194,7 @@ func (a *App) CheckApps() AppStatus {
 	shizukuInstalled, _ := a.isPackageInstalled("moe.shizuku.privileged.api")
 
 	// 检查 Nrfr
-	nrfrInstalled, _ := a.isPackageInstalled("com.github.nrfr")
+	nrfrInstalled, _ := a.isPackageInstalled("com.cloudclawebot.nrfr")
 	needUpdate := false
 	if nrfrInstalled {
 		needUpdate, _ = a.CheckNrfrUpdate()
@@ -368,7 +368,7 @@ func (a *App) StartNrfr() error {
 	}
 
 	// 使用 monkey 启动 Nrfr
-	_, err := a.selectedDevice.RunShellCommand("monkey", "-p", "com.github.nrfr", "1")
+	_, err := a.selectedDevice.RunShellCommand("monkey", "-p", "com.cloudclawebot.nrfr", "1")
 	if err != nil {
 		return fmt.Errorf("failed to start nrfr: %v", err)
 	}
@@ -440,7 +440,7 @@ func (a *App) CheckNrfrUpdate() (bool, error) {
 	}
 
 	// 检查是否已安装
-	installed, err := a.isPackageInstalled("com.github.nrfr")
+	installed, err := a.isPackageInstalled("com.cloudclawebot.nrfr")
 	if err != nil {
 		return false, err
 	}
@@ -450,14 +450,13 @@ func (a *App) CheckNrfrUpdate() (bool, error) {
 	}
 
 	// 获取已安装版本
-	currentVersion, err := a.GetAppVersion("com.github.nrfr")
+	currentVersion, err := a.GetAppVersion("com.cloudclawebot.nrfr")
 	if err != nil {
 		return false, err
 	}
 
 	// 最新版本号（从build.gradle.kts中获取）
-	latestVersion := "1.0.5" // 这里硬编码为当前最新版本
-
+	latestVersion := "1.0.6" // 这里硬编码为当前最新版本
 	// 比较版本号
 	return compareVersions(currentVersion, latestVersion) < 0, nil
 }

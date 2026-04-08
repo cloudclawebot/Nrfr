@@ -15,7 +15,7 @@ import com.github.nrfr.model.SimCardInfo
 import rikka.shizuku.ShizukuBinderWrapper
 
 object CarrierConfigManager {
-    private const val PACKAGE_NAME = "com.github.nrfr"
+    private const val PACKAGE_NAME = "com.cloudclawebot.nrfr"
     private const val ANDROID_16_SHELL_ERROR = "overrideConfig cannot be invoked by shell"
 
     fun getSimCards(context: Context): List<SimCardInfo> {
